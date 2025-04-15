@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paste Image Example</title>
+    <style>
+        /* Styling for resizable image */
+        .resizable {
+            position: relative;
+            display: inline-block;
+            border: 1px solid black;
+        }
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 15px;
+            height: 15px;
+            background-color: rgba(0, 0, 0, 0.5);
+            cursor: se-resize;
+        }
+        img {
+            display: block;
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div contenteditable="true" id="editor" style="border: 1px solid #000; width: 400px; height: 300px; min-height: 50px;">
+        Paste an image here...
+    </div>
+
+    <!-- Form to save the image name -->
+    <form id="image-form" method="POST" action="/save-image" enctype="multipart/form-data">
+        <input type="text" id="image-name" name="image-name" placeholder="Image Name" required />
+        <input type="submit" value="Save Form" />
+    </form>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const imageNameInput = document.getElementById('image-name'); // Image name input field
+
+        editor.addEventListener('paste', function(event) {
+            let items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf("image") !== -1) {
+                    let file = items[i].getAsFile();
+                    let reader = new FileReader();
+                    reader.onloadend = function() {
+                        // Base64 string
+                        let base64Image = reader.result;
+                        insertImage(base64Image);
+                        // After inserting, save the image to the server
+                        saveImageToDatabase(base64Image);
+                    }
+                    reader.readAsDataURL(file);
+                }
+            }
+        });
+
+        function insertImage(base64Image) {
+            const img = document.createElement('img');
+            img.src = base64Image;
+
+            // Wrap the image in a resizable container
+            const wrapper = document.createElement('div');
+            wrapper.classList.add('resizable');
+            wrapper.appendChild(img);
+
+            // Add resize handle
+            const resizeHandle = document.createElement('div');
+            resizeHandle.classList.add('resize-handle');
+            wrapper.appendChild(resizeHandle);
+
+            // Append to the editor
+            editor.appendChild(wrapper);
+
+            // Make the image resizable
+            makeImageResizable(wrapper);
+        }
+
+        function makeImageResizable(wrapper) {
+            let isResizing = false;
+            let initialWidth, initialHeight, initialMouseX, initialMouseY;
+
+            const resizeHandle = wrapper.querySelector('.resize-handle');
+            const imgElement = wrapper.querySelector('img');
+
+            resizeHandle.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                isResizing = true;
+                initialWidth = imgElement.offsetWidth;
+                initialHeight = imgElement.offsetHeight;
+                initialMouseX = e.clientX;
+                initialMouseY = e.clientY;
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+
+            function onMouseMove(e) {
+                if (isResizing) {
+                    const dx = e.clientX - initialMouseX;
+                    const dy = e.clientY - initialMouseY;
+
+                    imgElement.style.width = `${initialWidth + dx}px`;
+                    imgElement.style.height = `${initialHeight + dy}px`;
+                }
+            }
+
+            function onMouseUp() {
+                isResizing = false;
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+        }
+
+        // Function to save image to the backend
+        function saveImageToDatabase(base64Image) {
+            fetch('/save-product-image', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}' // Adjust this based on your backend setup
+                },
+                body: JSON.stringify({ image: base64Image })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // If the image is saved successfully, populate the image name in the input field
+                    imageNameInput.value = data.imageName; // Set the image name received from the server
+                } else {
+                    console.error('Image save failed');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+</html>
